@@ -216,6 +216,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			eg1.value = 0.f;
 			eg1.state = stop;
 		}
+		if (eg1.loop == GPIO_PIN_SET && eg1.trigger == GPIO_PIN_SET){ // when not looping and trigger is pressed, go into attack
+			eg1.state = attack;
+			HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_SET);
+		}
 		break;
 	case stop:
 		if (eg1.loop == GPIO_PIN_RESET || eg1.trigger == GPIO_PIN_SET){
@@ -251,6 +255,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if (eg2.value <= 0.f){
 			eg2.value = 0.f;
 			eg2.state = stop;
+		}
+		if (eg2.loop == GPIO_PIN_SET && eg2.trigger == GPIO_PIN_SET){ // if not looping and trigger is pressed, go into attack
+			eg2.state = attack;
+			HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_SET);
 		}
 		break;
 	case stop:
