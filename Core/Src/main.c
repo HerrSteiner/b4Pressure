@@ -213,8 +213,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	float accumulator;
 
 	// calculate oscillator 1
-	accumulator = osc1.phase_accumulator;
-	accumulator += osc1.inc;
+	accumulator = osc1.phase_accumulator + osc1.inc;
 	accumulator = (accumulator >= WAVE_TABLE_SIZE) ? accumulator - WAVE_TABLE_SIZE: accumulator;
 
 	// apply FM
@@ -253,8 +252,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	osc1FMSample = sample * 500.f;
 
 	// calculate oscillator 2 ===========================================================================
-	accumulator = osc2.phase_accumulator;
-	accumulator += osc2.inc;
+	accumulator = osc2.phase_accumulator + osc2.inc;
 	accumulator = (accumulator >= WAVE_TABLE_SIZE) ? accumulator - WAVE_TABLE_SIZE: accumulator;
 
 	accumulator += eg2.destinations[0] * (env2Value * 200.f) + osc1.crossFM * osc1FMSample;
@@ -293,6 +291,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	// adding the oscillators
 	float filterInput = (sample * osc1.outputFilter + sample2 * osc2.outputFilter) * 0.5f;
 	float filterOutput = 0.f;
+	volumeEg = eg1.destinations[5] == 0.f ? 1.f: env1Value;
+	volumeEg2 = eg2.destinations[5] == 0.f ? 1.f: env2Value;
 
 	if (filterModus == GPIO_PIN_RESET){
 		low = low + (cutoff + (eg1.destinations[3]*env1Value*2.f) + (eg2.destinations[3]*env2Value*2.f) + pad[1].mode2 * pad[1].pressure + pad[2].mode2 * pad[2].pressure) * band;
@@ -308,8 +308,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		filterIndexMod = fminf(filterIndexMod,3.f);
 		index = (uint16_t)filterIndexMod;
 		indexPlus = index + 1;
-		volumeEg = eg1.destinations[5] == 0.f ? 1.f: env1Value;
-		volumeEg2 = eg2.destinations[5] == 0.f ? 1.f: env2Value;
 		padValue = pad[3].mode2 == 0.f ? 1.f : pad[3].pressure;
 		filterOutput = (((((indexPlus - filterIndexMod) * *filterStates[index] + (filterIndexMod - index) * *filterStates[indexPlus])*filterVolume * compensation) * volumeEg) * volumeEg2)*padValue;
 	}
@@ -350,8 +348,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		y4-=(y4*y4*y4)/6.f;
 
 		oldx = x; oldy1 = my1; oldy2 = y2; oldy3 = y3;
-		volumeEg = eg1.destinations[5] == 0.f ? 1.f: env1Value;
-		volumeEg2 = eg2.destinations[5] == 0.f ? 1.f: env2Value;
 		padValue = pad[3].mode2 == 0.f ? 1.f : pad[3].pressure;
 		filterOutput = (((y4 *filterVolume) * volumeEg) * volumeEg2)*padValue;
 	}
@@ -390,7 +386,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  HAL_Delay(1000);
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -476,7 +472,7 @@ int main(void)
 	{
 		//UART_SEND(&huart3, buffer);
 		while(!adc1Completed && !adc2Completed && !adc3Completed){
-			HAL_Delay(8);
+			HAL_Delay(4);
 		}
 		if (adc1Completed){
 			HAL_ADC_Stop_DMA(&hadc1);
@@ -487,7 +483,7 @@ int main(void)
 			osc1.volume = dacLUT[adc1Buffer[3]];
 
 			osc2.inc = oscLUT[adc1Buffer[1]];
-			osc2.tableIndex = dacLUT[adc1Buffer[5]]* 6.f;
+			osc2.tableIndex = dacLUT[adc1Buffer[5]] * 6.f;
 			osc2.volume = dacLUT[adc1Buffer[7]];
 
 			filterIndex = dacLUT[adc1Buffer[4]] * 3.f;
@@ -553,9 +549,6 @@ int main(void)
 #endif
 
 			cutoff = cutLUT[adc2Buffer[4]];//(2.f * sinf (3.14159265359f *  (dacLUT[adc2Buffer[1]]*11000.f + 20.f + analogIn*aInFilter*100.f) * SRFactor));
-
-
-
 
 			HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc2Buffer, 5);
 		}
@@ -646,9 +639,7 @@ int main(void)
 			y2 = 0.f;
 			y3 = 0.f;
 			y4 = 0.f;
-
 		}
-
 		HAL_GPIO_WritePin(GPIOB, LD1_Pin, filterModus);
 
 		eg1.loop = HAL_GPIO_ReadPin(GPIOB, Eg1Loop_Pin);// == GPIO_PIN_RESET ? 1.0f:0.f;
@@ -710,13 +701,13 @@ int main(void)
 			}
 			break;
 		case decay:
-
 			if (eg1.value > 0.f){
 				eg1.factor = eg1.dec;
 			}
 			else{
 				eg1.state = stop;
 				eg1.value = 0.f;
+				eg1.factor = 0.f;
 			}
 			if (eg1.loop == GPIO_PIN_SET && eg1.trigger == GPIO_PIN_SET){ // when not looping and trigger is pressed, go into attack
 				eg1.state = attack;
@@ -762,6 +753,7 @@ int main(void)
 			}
 			else {
 				eg2.state = stop;
+				eg2.value = 0.f;
 				eg2.factor = 0.f;
 			}
 			if (eg2.loop == GPIO_PIN_SET && eg2.trigger == GPIO_PIN_SET){ // if not looping and trigger is pressed, go into attack
@@ -781,7 +773,7 @@ int main(void)
 
 
 		//UART_SEND(&huart3, buffer);
-		HAL_Delay(4);
+		HAL_Delay(2);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -811,11 +803,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 4;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 8;
   RCC_OscInitStruct.PLL.PLLN = 216;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 9;
