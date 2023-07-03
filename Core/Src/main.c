@@ -38,7 +38,9 @@
 #define DAC_RANGE 4095.0f
 #define SR 96000.f
 #define WAVE_TABLE_SIZE 4096.f
+#define max(a, b) (((a) > (b)) ? (a) : (b))
 #define min(a,b) (((a) < (b)) ? (a) : (b))
+//#define TracePads
 
 struct OscData {
 	// everything phase related
@@ -71,6 +73,7 @@ struct EgData {
 	//float decay;
 	float destinations[6];
 	float value;
+	float factor;
 	float inc;
 	float dec;
 	float amount;
@@ -190,87 +193,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	// since we only use one timer, there is no need to check the timer
 
 	// calculate envelope generator 1
-	switch(eg1.state){
-	case attack:
-		if (eg1.loop == GPIO_PIN_RESET || eg1.trigger == GPIO_PIN_SET){
-			eg1.value += eg1.inc;
-			if (eg1.value >= 1.f) {
-				eg1.value = 1.f;
-				eg1.state=sustain;
-			}
-		}
-		else {
-			eg1.state = decay;
-			HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_RESET);
-		}
-		break;
-	case sustain:
-		if (eg1.trigger != GPIO_PIN_SET){
-			eg1.state = decay;
-			HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_RESET);
-		}
-		break;
-	case decay:
-		eg1.value -= eg1.dec;
-		if (eg1.value <= 0.f){
-			eg1.value = 0.f;
-			eg1.state = stop;
-		}
-		if (eg1.loop == GPIO_PIN_SET && eg1.trigger == GPIO_PIN_SET){ // when not looping and trigger is pressed, go into attack
-			eg1.state = attack;
-			HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_SET);
-		}
-		break;
-	case stop:
-		if (eg1.loop == GPIO_PIN_RESET || eg1.trigger == GPIO_PIN_SET){
-			eg1.state = attack;
-			HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_SET);
-		}
-		break;
-	}
+	float egValue = eg1.value + eg1.factor;
+	egValue = fminf(egValue,1.f);
+	egValue = fmaxf(egValue,0.f);
+	eg1.value = egValue;
+	float env1Value = egValue * egValue * eg1.amount; // making the envelope snappy
 
 	// calculate envelope generator 2
-	switch(eg2.state){
-	case attack:
-		if (eg2.loop == GPIO_PIN_RESET || eg2.trigger == GPIO_PIN_SET){
-			eg2.value += eg2.inc;
-			if (eg2.value >= 1.f) {
-				eg2.value = 1.f;
-				eg2.state=sustain;
-			}
-		}
-		else {
-			eg2.state = decay;
-			HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_RESET);
-		}
-		break;
-	case sustain:
-		if (eg2.trigger != GPIO_PIN_SET){
-			eg2.state = decay;
-			HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_RESET);
-		}
-		break;
-	case decay:
-		eg2.value -= eg2.dec;
-		if (eg2.value <= 0.f){
-			eg2.value = 0.f;
-			eg2.state = stop;
-		}
-		if (eg2.loop == GPIO_PIN_SET && eg2.trigger == GPIO_PIN_SET){ // if not looping and trigger is pressed, go into attack
-			eg2.state = attack;
-			HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_SET);
-		}
-		break;
-	case stop:
-		if (eg2.loop == GPIO_PIN_RESET || eg2.trigger == GPIO_PIN_SET){
-			eg2.state = attack;
-			HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_SET);
-		}
-		break;
-	}
-
-	float env1Value = eg1.value * eg1.value * eg1.amount; // making the envelope snappy
-	float env2Value = eg2.value * eg2.value * eg2.amount;
+	egValue = eg2.value + eg2.factor;
+	egValue = fminf(egValue,1.f);
+	egValue = fmaxf(egValue,0.f);
+	eg2.value = egValue;
+	float env2Value = egValue * egValue * eg2.amount;
 
 	// Oscillators -----------------------------------------------------------------
 	float sample;
@@ -331,7 +265,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	osc2.phase_accumulator = accumulator;
 
 	// get wavetable
-	tableIndex = osc2.tableIndex + eg2.destinations[1]* (env2Value * 6.f);
+	tableIndex = osc2.tableIndex + eg2.destinations[1]* (env2Value * 6.f) + pad[3].mode1 * pad[3].pressure * 6.f;
 	tindex = (uint16_t)tableIndex;
 
 	tindex = min(tindex,6);
@@ -361,7 +295,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	float filterOutput = 0.f;
 
 	if (filterModus == GPIO_PIN_RESET){
-		low = low + (cutoff + (eg1.destinations[3]*env1Value*2.f) + (eg2.destinations[3]*env2Value*2.f) + pad[1].mode2 * pad[1].pressure+ pad[3].mode2 * pad[3].pressure) * band;
+		low = low + (cutoff + (eg1.destinations[3]*env1Value*2.f) + (eg2.destinations[3]*env2Value*2.f) + pad[1].mode2 * pad[1].pressure + pad[2].mode2 * pad[2].pressure) * band;
 		high = reso * filterInput - low - reso*band;
 		band = cutoff * high + band;
 		notch = high + low;
@@ -370,13 +304,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		//if (reso < 0.4f)
 		compensation = 4.f*antiReso*antiReso*antiReso*antiReso*antiReso*antiReso*antiReso * antiReso * antiReso * antiReso * antiReso + 1.f;
 		// filter blend
-		float filterIndexMod = (filterIndex + eg1.destinations[4]* (env1Value * 3.f)+ eg2.destinations[4] * (env2Value * 3.f) + pad[2].mode2 * (pad[2].pressure * 3.f));
+		float filterIndexMod = (filterIndex + eg1.destinations[4]* (env1Value * 3.f)+ eg2.destinations[4] * (env2Value * 3.f));// + pad[3].mode1 * (pad[3].pressure * 3.f));
 		filterIndexMod = fminf(filterIndexMod,3.f);
 		index = (uint16_t)filterIndexMod;
 		indexPlus = index + 1;
 		volumeEg = eg1.destinations[5] == 0.f ? 1.f: env1Value;
 		volumeEg2 = eg2.destinations[5] == 0.f ? 1.f: env2Value;
-		padValue = pad[3].mode1 == 0.f ? 1.f : pad[3].pressure;
+		padValue = pad[3].mode2 == 0.f ? 1.f : pad[3].pressure;
 		filterOutput = (((((indexPlus - filterIndexMod) * *filterStates[index] + (filterIndexMod - index) * *filterStates[indexPlus])*filterVolume * compensation) * volumeEg) * volumeEg2)*padValue;
 	}
 	else {
@@ -386,7 +320,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		index = (uint16_t)signal;
 		indexPlus = index + 1;
 
-		float shapeMorph =(filterIndex * 2.f + eg1.destinations[4]* (env1Value * 6.f)+ eg2.destinations[4] * (env2Value * 6.f) + pad[2].mode2 * (pad[2].pressure * 6.f));
+		float shapeMorph =(filterIndex * 2.f + eg1.destinations[4]* (env1Value * 6.f)+ eg2.destinations[4] * (env2Value * 6.f));// + pad[2].mode2 * (pad[2].pressure * 6.f));
 		shapeMorph = fminf(shapeMorph,6.f);
 		tindex = (uint16_t)shapeMorph;
 		tindexPlus = tindex + 1;
@@ -396,7 +330,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		filterInput = ((tindexPlus - shapeMorph) * sampleA + (shapeMorph-tindex)*sampleB)*0.5f;
 
 		// Moogish filter
-		float f = (cutoff + (eg1.destinations[3]*env1Value*0.2f) + (eg2.destinations[3]*env2Value*0.2f) + pad[1].mode2 * pad[1].pressure+ pad[3].mode2 * pad[3].pressure);
+		float f = (cutoff + (eg1.destinations[3]*env1Value*0.2f) + (eg2.destinations[3]*env2Value*0.2f) + pad[1].mode2 * pad[1].pressure + pad[2].mode2 * pad[2].pressure * 1.f);
 		float p=f*(1.8f-0.8f*f);
 		float k=p+p-1.f;
 
@@ -418,7 +352,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		oldx = x; oldy1 = my1; oldy2 = y2; oldy3 = y3;
 		volumeEg = eg1.destinations[5] == 0.f ? 1.f: env1Value;
 		volumeEg2 = eg2.destinations[5] == 0.f ? 1.f: env2Value;
-		padValue = pad[3].mode1 == 0.f ? 1.f : pad[3].pressure;
+		padValue = pad[3].mode2 == 0.f ? 1.f : pad[3].pressure;
 		filterOutput = (((y4 *filterVolume) * volumeEg) * volumeEg2)*padValue;
 	}
 	float output1 = filterOutput;
@@ -502,18 +436,24 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
+#ifdef TracePads
   MX_USB_OTG_FS_PCD_Init();
+#endif
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_ADC3_Init();
-  //MX_USART3_UART_Init();
+#ifdef TracePads
+  MX_USART3_UART_Init();
+#endif
   MX_DAC_Init();
   MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
+#ifdef TracePads
   char buffer[30];
   	sprintf(buffer, "not completed");
   	char CRLF[3] ={0x0A,0x0D,0x0};
   	strcat(buffer,CRLF);
+#endif
   //UART_SEND(&huart3, buffer);
 
 
@@ -578,13 +518,15 @@ int main(void)
 				uint16_t value = (pad2Readings[0] + pad2Readings[1] + pad2Readings[2] + pad2Readings[3] + pad2Readings[4] + pad2Readings[5] + pad2Readings[6] + pad2Readings[7]) / 8;
 				pad[1].pressure = dacLUT[value];
 			}
-			/* itoa(adc2Buffer[0],buffer,10);
+#ifdef TracePads
+			 itoa(adc2Buffer[0],buffer,10);
 				  strcat(buffer,CRLF);
-				  UART_SEND(&huart3, buffer);*/
+				  UART_SEND(&huart3, buffer);
 
-			/* itoa(adc2Buffer[1],buffer,10);
+			 itoa(adc2Buffer[1],buffer,10);
 							  strcat(buffer,CRLF);
-							  UART_SEND(&huart3, buffer);*/
+							  UART_SEND(&huart3, buffer);
+#endif
 			pad3Readings[pad3Index] = adc2Buffer[2];
 			pad3Index++;
 			if (pad3Index == 8){
@@ -592,21 +534,25 @@ int main(void)
 				uint16_t value = (pad3Readings[0] + pad3Readings[1] + pad3Readings[2] + pad3Readings[3] + pad3Readings[4] + pad3Readings[5] + pad3Readings[6] + pad3Readings[7]) / 8;
 				pad[2].pressure = dacLUT[value];
 			}
-
-			/* itoa(adc2Buffer[2],buffer,10);
+#ifdef TracePads
+			 itoa(adc2Buffer[2],buffer,10);
 							  strcat(buffer,CRLF);
-							  UART_SEND(&huart3, buffer);*/
-			pad4Readings[pad4Index] = adc2Buffer[3];
+							  UART_SEND(&huart3, buffer);
+#endif
+			int pad4 = adc2Buffer[3] / 2 - 400;
+			pad4Readings[pad4Index] = max(pad4,0);
 			pad4Index++;
 			if (pad4Index == 8){
 				pad4Index = 0;
 				uint16_t value = (pad4Readings[0] + pad4Readings[1] + pad4Readings[2] + pad4Readings[3] + pad4Readings[4] + pad4Readings[5] + pad4Readings[6] + pad4Readings[7]) / 8;
 				pad[3].pressure = dacLUT[value];
 			}
-			 /*itoa(adc2Buffer[3],buffer,10);
+#ifdef TracePads
+			itoa(adc2Buffer[3],buffer,10);
 							  strcat(buffer,CRLF);
 							  strcat(buffer,CRLF);
-							  UART_SEND(&huart3, buffer);*/
+							  UART_SEND(&huart3, buffer);
+#endif
 
 			cutoff = cutLUT[adc2Buffer[4]];//(2.f * sinf (3.14159265359f *  (dacLUT[adc2Buffer[1]]*11000.f + 20.f + analogIn*aInFilter*100.f) * SRFactor));
 
@@ -634,7 +580,7 @@ int main(void)
 			eg1DecayIndex++;
 			if (eg1DecayIndex == 8){
 				float eDec = (eg1DecayReadings[0]+eg1DecayReadings[1]+eg1DecayReadings[2]+eg1DecayReadings[3]+eg1DecayReadings[4]+eg1DecayReadings[5]+eg1DecayReadings[6]+eg1DecayReadings[7]) * 0.125f;
-				eg1.dec = eDec * 0.00225f + 0.000001f;
+				eg1.dec = (eDec * 0.00225f + 0.000001f) * -1.f;
 				eg1DecayIndex = 0;
 			}
 
@@ -666,7 +612,7 @@ int main(void)
 			eg2DecayIndex++;
 			if (eg2DecayIndex == 8){
 				float eDec = (eg2DecayReadings[0]+eg2DecayReadings[1]+eg2DecayReadings[2]+eg2DecayReadings[3]+eg2DecayReadings[4]+eg2DecayReadings[5]+eg2DecayReadings[6]+eg2DecayReadings[7]) * 0.125f;
-				eg2.dec = eDec * 0.00225f + 0.000001f;
+				eg2.dec = (eDec * 0.00225f + 0.000001f) * -1.f;
 				eg2DecayIndex = 0;
 			}
 
@@ -686,7 +632,7 @@ int main(void)
 			HAL_ADC_Start_DMA(&hadc3, (uint32_t*)adc3Buffer, 7);
 		}
 
-		// read GPIO
+		// read GPIOs -------------------------------------------------------------------------------------
 
 		osc1.output2 = HAL_GPIO_ReadPin(GPIOE, Osc1Out2_Pin) == GPIO_PIN_RESET ? 1.0f:0.f;
 		osc1.outputFilter = HAL_GPIO_ReadPin(GPIOE, Osc1Filter_Pin) == GPIO_PIN_RESET ? 1.0f:0.f;
@@ -702,7 +648,11 @@ int main(void)
 			y2 = 0.f;
 			y3 = 0.f;
 			y4 = 0.f;
+
 		}
+
+		HAL_GPIO_WritePin(GPIOB, LD1_Pin, filterModus);
+
 		eg1.loop = HAL_GPIO_ReadPin(GPIOB, Eg1Loop_Pin);// == GPIO_PIN_RESET ? 1.0f:0.f;
 		eg1.trigger = eg2.trigger = HAL_GPIO_ReadPin(GPIOB, EgTrigger_Pin);// == GPIO_PIN_RESET ? 1.0f:0.f;
 
@@ -722,6 +672,7 @@ int main(void)
 		eg2.destinations[4] = HAL_GPIO_ReadPin(GPIOE, Eg2Morph_Pin)== GPIO_PIN_RESET ? 1.0f:0.f;
 		eg2.destinations[5] = HAL_GPIO_ReadPin(GPIOE, Eg2FilterVol_Pin)== GPIO_PIN_RESET ? 1.0f:0.f;
 
+
 		osc1.crossFM = HAL_GPIO_ReadPin(GPIOF, Osc1FM_Pin)== GPIO_PIN_RESET ? 1.0f:0.f;
 		osc2.crossFM = HAL_GPIO_ReadPin(GPIOE, Osc2FM_Pin)== GPIO_PIN_RESET ? 1.0f:0.f;
 
@@ -736,6 +687,99 @@ int main(void)
 
 		pad[3].mode1 = HAL_GPIO_ReadPin(GPIOF, PadMode4_Pin)== GPIO_PIN_RESET ? 1.0f:0.f;
 		pad[3].mode2 = pad[3].mode1 == 0.f ? 1.f : 0.f;
+
+// control the egs
+		switch(eg1.state){
+		case attack:
+			if (eg1.loop == GPIO_PIN_RESET || eg1.trigger == GPIO_PIN_SET){
+				if (eg1.value < 1.f) {
+					eg1.factor = eg1.inc;
+				}
+				else{
+					eg1.state = sustain;
+					eg1.factor = 0.f;
+				}
+			}
+			else {
+				eg1.state = decay;
+				HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_RESET);
+			}
+			break;
+		case sustain:
+			if (eg1.trigger != GPIO_PIN_SET){
+				eg1.state = decay;
+				HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_RESET);
+			}
+			break;
+		case decay:
+
+			if (eg1.value > 0.f){
+				eg1.factor = eg1.dec;
+			}
+			else{
+				eg1.state = stop;
+				eg1.value = 0.f;
+			}
+			if (eg1.loop == GPIO_PIN_SET && eg1.trigger == GPIO_PIN_SET){ // when not looping and trigger is pressed, go into attack
+				eg1.state = attack;
+				eg1.factor = eg1.inc;
+				HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_SET);
+			}
+			break;
+		case stop:
+			if (eg1.loop == GPIO_PIN_RESET || eg1.trigger == GPIO_PIN_SET){
+				eg1.state = attack;
+				eg1.factor = eg1.inc;
+				HAL_GPIO_WritePin(GPIOB, LD3_Pin, GPIO_PIN_SET);
+			}
+			break;
+		}
+
+		switch(eg2.state){
+		case attack:
+			if (eg2.loop == GPIO_PIN_RESET || eg2.trigger == GPIO_PIN_SET){
+
+				if (eg2.value < 1.f) {
+					eg2.factor = eg2.inc;
+				}
+				else {
+					eg2.state=sustain;
+					eg2.factor = 0.f;
+				}
+			}
+			else {
+				eg2.state = decay;
+				HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_RESET);
+			}
+			break;
+		case sustain:
+			if (eg2.trigger != GPIO_PIN_SET){
+				eg2.state = decay;
+				HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_RESET);
+			}
+			break;
+		case decay:
+			if (eg2.value > 0.f){
+				eg2.factor = eg2.dec;
+			}
+			else {
+				eg2.state = stop;
+				eg2.factor = 0.f;
+			}
+			if (eg2.loop == GPIO_PIN_SET && eg2.trigger == GPIO_PIN_SET){ // if not looping and trigger is pressed, go into attack
+				eg2.state = attack;
+				eg2.factor = eg2.inc;
+				HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_SET);
+			}
+			break;
+		case stop:
+			if (eg2.loop == GPIO_PIN_RESET || eg2.trigger == GPIO_PIN_SET){
+				eg2.state = attack;
+				eg2.factor = eg2.inc;
+				HAL_GPIO_WritePin(GPIOB, LD2_Pin, GPIO_PIN_SET);
+			}
+			break;
+		}
 
 
 		//UART_SEND(&huart3, buffer);
