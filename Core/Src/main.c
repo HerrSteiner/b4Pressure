@@ -237,14 +237,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	// interpolated table value
 	uint16_t index = (uint16_t)accumulator;
 	uint16_t indexPlus = index + 1;
+	float fIndex = (float)index;
+	float fIndexPlus = (float)indexPlus;
 	float sampleA,sampleB;
 
-	sampleA = (indexPlus - accumulator) * *(waveset1[tindex]+index) + (accumulator-index) * *(waveset1[tindex]+indexPlus);
-	sampleB = (indexPlus - accumulator) * *(waveset1[tindexPlus]+index) + (accumulator-index) * *(waveset1[tindexPlus]+indexPlus);
+	sampleA = (fIndexPlus - accumulator) * *(waveset1[tindex]+index) + (accumulator-fIndex) * *(waveset1[tindex]+indexPlus);
+	sampleB = (fIndexPlus - accumulator) * *(waveset1[tindexPlus]+index) + (accumulator-fIndex) * *(waveset1[tindexPlus]+indexPlus);
 
 	float volumeEg = eg1.destinations[2] == 0.f ? 1.f: env1Value;
 
-	sample = ((tindexPlus - tableIndex) * sampleA + (tableIndex-tindex)*sampleB);
+	sample = (((float)(tindexPlus - tableIndex)) * sampleA + ((float)(tableIndex-tindex))*sampleB);
 
 	float padValue = pad[1].mode1 == 0.f ? 1.f : pad[1].pressure;
 
@@ -273,13 +275,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	// interpolated table value
 	index = (uint16_t)accumulator;
 	indexPlus = index + 1;
-
-	sampleA = (indexPlus - accumulator) * *(waveset1[tindex]+index) + (accumulator-index) * *(waveset1[tindex]+indexPlus);
-	sampleB = (indexPlus - accumulator) * *(waveset1[tindexPlus]+index) + (accumulator-index) * *(waveset1[tindexPlus]+indexPlus);
+	fIndex = (float)index;
+	fIndexPlus = (float)indexPlus;
+	sampleA = (fIndexPlus - accumulator) * *(waveset1[tindex]+index) + (accumulator-fIndex) * *(waveset1[tindex]+indexPlus);
+	sampleB = (fIndexPlus - accumulator) * *(waveset1[tindexPlus]+index) + (accumulator-fIndex) * *(waveset1[tindexPlus]+indexPlus);
 
 	float volumeEg2 = eg2.destinations[2] == 0.f ? 1.f: env2Value;
 	padValue = pad[2].mode1 == 0.f ? 1.f : pad[2].pressure;
-	sample2 = ((((tindexPlus - tableIndex) * sampleA + (tableIndex-tindex)*sampleB) * osc2.volume) * volumeEg2)*padValue;
+	sample2 = ((( ((float)(tindexPlus - tableIndex)) * sampleA + ((float)(tableIndex-tindex))*sampleB) * osc2.volume) * volumeEg2)*padValue;
 	osc2FMSample = sample2 * 500.f;
 
 	// filter ----------------------------------------------------------------------------------
@@ -308,8 +311,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		filterIndexMod = fminf(filterIndexMod,3.f);
 		index = (uint16_t)filterIndexMod;
 		indexPlus = index + 1;
+		fIndex = (float)index;
+		fIndexPlus = (float)indexPlus;
 		padValue = pad[3].mode2 == 0.f ? 1.f : pad[3].pressure;
-		filterOutput = (((((indexPlus - filterIndexMod) * *filterStates[index] + (filterIndexMod - index) * *filterStates[indexPlus])*filterVolume * compensation) * volumeEg) * volumeEg2)*padValue;
+		filterOutput = (((((fIndexPlus - filterIndexMod) * *filterStates[index] + (filterIndexMod - fIndex) * *filterStates[indexPlus])*filterVolume * compensation) * volumeEg) * volumeEg2)*padValue;
 	}
 	else {
 		// waveshaper
@@ -317,15 +322,20 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		float signal = (((filterInput + 1.0f)*0.5f) * DAC_RANGE); // coincedence that dac range is wavetable size - 1
 		index = (uint16_t)signal;
 		indexPlus = index + 1;
+		fIndex = (float)index;
+		fIndexPlus = (float)indexPlus;
 
 		float shapeMorph =(filterIndex * 2.f + eg1.destinations[4]* (env1Value * 6.f)+ eg2.destinations[4] * (env2Value * 6.f));// + pad[2].mode2 * (pad[2].pressure * 6.f));
 		shapeMorph = fminf(shapeMorph,6.f);
 		tindex = (uint16_t)shapeMorph;
 		tindexPlus = tindex + 1;
 
-		sampleA = (indexPlus - signal) * *(shapeset[tindex]+index) + (signal-index) * *(shapeset[tindex]+indexPlus);
-		sampleB = (indexPlus - signal) * *(shapeset[tindexPlus]+index) + (signal-index) * *(shapeset[tindexPlus]+indexPlus);
-		filterInput = ((tindexPlus - shapeMorph) * sampleA + (shapeMorph-tindex)*sampleB)*0.5f;
+		sampleA = (fIndexPlus - signal) * *(shapeset[tindex]+index) + (signal-fIndex) * *(shapeset[tindex]+indexPlus);
+		sampleB = (fIndexPlus - signal) * *(shapeset[tindexPlus]+index) + (signal-fIndex) * *(shapeset[tindexPlus]+indexPlus);
+
+		fIndex = (float)tindex;
+		fIndexPlus = (float)tindexPlus;
+		filterInput = ((fIndexPlus - shapeMorph) * sampleA + (shapeMorph-fIndex)*sampleB)*0.5f;
 
 		// Moogish filter
 		float f = (cutoff + (eg1.destinations[3]*env1Value*0.2f) + (eg2.destinations[3]*env2Value*0.2f) + pad[1].mode2 * pad[1].pressure + pad[2].mode2 * pad[2].pressure * 1.f);
