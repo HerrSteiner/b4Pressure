@@ -390,47 +390,46 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-	float freqFactor = WAVE_TABLE_SIZE / SR;
-	float dacLUT[4096];
-	float cutLUT[4096];
-	float oscLUT[4096];
-
-	for (int i=0;i<4096;i++){
-		dacLUT[i] = ((float)i) / 4095.0f;
-		cutLUT[i] = (2.f * sinf (3.14159265359f *  (dacLUT[i]*11000.f + 20.f) / SR));
-		oscLUT[i] = freqFactor * (dacLUT[i]*2095.f + 0.01f);
-	}
-
-	float eg1AmountReadings[32];
-	uint16_t eg1AmountIndex = 0;
-	float eg1AttackReadings[8];
-	uint16_t eg1AttackIndex = 0;
-	float eg1DecayReadings[8];
-	uint16_t eg1DecayIndex = 0;
-
-	float eg2AmountReadings[32];
-	uint16_t eg2AmountIndex = 0;
-	float eg2AttackReadings[8];
-	uint16_t eg2AttackIndex = 0;
-	float eg2DecayReadings[8];
-	uint16_t eg2DecayIndex = 0;
-
-	uint16_t pad1Readings[8];
-	uint16_t pad1Index = 0;
-	uint16_t pad2Readings[8];
-	uint16_t pad2Index = 0;
-	uint16_t pad3Readings[8];
-	uint16_t pad3Index = 0;
-	uint16_t pad4Readings[8];
-	uint16_t pad4Index = 0;
-
+  HAL_Delay(1000);
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+  float freqFactor = WAVE_TABLE_SIZE / SR;
+  	float dacLUT[4096];
+  	float cutLUT[4096];
+  	float oscLUT[4096];
 
+  	for (int i=0;i<4096;i++){
+  		dacLUT[i] = ((float)i) / 4095.0f;
+  		cutLUT[i] = (2.f * sinf (3.14159265359f *  (dacLUT[i]*11000.f + 20.f) / SR));
+  		oscLUT[i] = freqFactor * (dacLUT[i]*2095.f + 0.01f);
+  	}
+
+  	float eg1AmountReadings[32];
+  	uint16_t eg1AmountIndex = 0;
+  	float eg1AttackReadings[8];
+  	uint16_t eg1AttackIndex = 0;
+  	float eg1DecayReadings[8];
+  	uint16_t eg1DecayIndex = 0;
+
+  	float eg2AmountReadings[32];
+  	uint16_t eg2AmountIndex = 0;
+  	float eg2AttackReadings[8];
+  	uint16_t eg2AttackIndex = 0;
+  	float eg2DecayReadings[8];
+  	uint16_t eg2DecayIndex = 0;
+
+  	uint16_t pad1Readings[8];
+  	uint16_t pad1Index = 0;
+  	uint16_t pad2Readings[8];
+  	uint16_t pad2Index = 0;
+  	uint16_t pad3Readings[8];
+  	uint16_t pad3Index = 0;
+  	uint16_t pad4Readings[8];
+  	uint16_t pad4Index = 0;
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -539,8 +538,7 @@ int main(void)
 							  strcat(buffer,CRLF);
 							  UART_SEND(&huart3, buffer);
 #endif
-			int pad4 = adc2Buffer[3] / 2 - 400;
-			pad4Readings[pad4Index] = max(pad4,0);
+			pad4Readings[pad4Index] = adc2Buffer[3];
 			pad4Index++;
 			if (pad4Index == 8){
 				pad4Index = 0;
