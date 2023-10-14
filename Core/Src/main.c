@@ -152,6 +152,7 @@ static volatile struct PadData pad[4];
 
 // wavetableset definitions, each one is made of several individual single cycle wave tables
 const float *waveset1[8]={sintable,tritable,sinsawtable,sawtable,squaretable,sinsquaretable,randomtable,sintable};
+const float *waveset2[8]={sintable,tritable,sawtable,sawConfusion,sawDecay,squareDecay,squareConfusion,squaretable};
 const float *shapeset[8]={sawtable,sinsawtable,sintable,tritable,squaretable,sinsquaretable,randomtable,sawtable};
 /* USER CODE END PV */
 
@@ -278,8 +279,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	indexPlus = index + 1;
 	fIndex = (float)index;
 	fIndexPlus = (float)indexPlus;
-	sampleA = (fIndexPlus - accumulator) * *(waveset1[tindex]+index) + (accumulator-fIndex) * *(waveset1[tindex]+indexPlus);
-	sampleB = (fIndexPlus - accumulator) * *(waveset1[tindexPlus]+index) + (accumulator-fIndex) * *(waveset1[tindexPlus]+indexPlus);
+	sampleA = (fIndexPlus - accumulator) * *(waveset2[tindex]+index) + (accumulator-fIndex) * *(waveset2[tindex]+indexPlus);
+	sampleB = (fIndexPlus - accumulator) * *(waveset2[tindexPlus]+index) + (accumulator-fIndex) * *(waveset2[tindexPlus]+indexPlus);
 
 	float volumeEg2 = eg2.destinations[2] == 0.f ? 1.f: env2Value;
 	padValue = pad[2].mode1 == 0.f ? 1.f : pad[2].pressure;
@@ -316,7 +317,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		fIndex = (float)index;
 		fIndexPlus = (float)indexPlus;
 		padValue = pad[3].mode2 == 0.f ? 1.f : pad[3].pressure;
-		filterOutput = (( (fIndexPlus - filterIndexMod) * *filterStates[index] + (filterIndexMod - fIndex) * *filterStates[indexPlus]) *filterVolume *compensation) *  (volumeEg * volumeEg2*padValue);
+		filterOutput = (( (fIndexPlus - filterIndexMod) * *filterStates[index] + (filterIndexMod - fIndex) * *filterStates[indexPlus]) *filterVolume *compensation) *  (volumeEg * volumeEg2*padValue)* 0.5f;;
 	}
 	else {
 		// waveshaper
@@ -361,9 +362,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 		oldx = x; oldy1 = my1; oldy2 = y2; oldy3 = y3;
 		padValue = pad[3].mode2 == 0.f ? 1.f : pad[3].pressure;
-		filterOutput = (((y4 *filterVolume) * volumeEg) * volumeEg2)*padValue;
+		filterOutput = ((((y4 *filterVolume) * volumeEg) * volumeEg2)*padValue) * 0.8f;
 	}
-	float output1 = filterOutput * 0.8f;
+	float output1 = filterOutput;
 	float output2 = (sample * osc1.output2 + sample2 * osc2.output2) * 0.24f;// 4.5f;
 
 	uint32_t DACData = (uint32_t) (((output1 + 1.0f)*0.5f * DAC_RANGE));

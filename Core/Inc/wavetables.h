@@ -11,4 +11,9 @@ extern const float randomtable[4097];
 extern const float sinsawtable[4097];
 extern const float sinsquaretable[4097];
 
+extern const float sawConfusion[4097];
+extern const float sawDecay[4097];
+extern const float squareConfusion[4097];
+extern const float squareDecay[4097];
+
 #endif
