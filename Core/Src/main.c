@@ -254,7 +254,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	float padValue = pad[1].mode1 == 0.f ? 1.f : pad[1].pressure;
 
 	sample = (osc1.volume * volumeEg * padValue) * sample;
-	osc1FMSample = sample * 500.f;
+	osc1FMSample = sample * 300.f;
 
 	// calculate oscillator 2 ===========================================================================
 	accumulator = osc2.phase_accumulator + osc2.inc;
@@ -286,7 +286,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	float volumeEg2 = eg2.destinations[2] == 0.f ? 1.f: env2Value;
 	padValue = pad[2].mode1 == 0.f ? 1.f : pad[2].pressure;
 	sample2 = ( ((float)(tindexPlus - tableIndex)) * sampleA + ((float)(tableIndex-tindex))*sampleB) * (osc2.volume * volumeEg2*padValue);
-	osc2FMSample = sample2 * 500.f;
+	osc2FMSample = sample2 * 300.f;
 
 	// filter ----------------------------------------------------------------------------------
 	//cutoff = cutoff freq in Hz

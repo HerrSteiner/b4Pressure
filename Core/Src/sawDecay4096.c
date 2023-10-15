@@ -1,6 +1,6 @@
 #include "wavetables.h"
 const float sawDecay[4097] = {
-   1.0,
+	0.90455078125,
    -0.99,
    -0.98951171875,
    -0.9890234375,
